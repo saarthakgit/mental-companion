@@ -4,9 +4,10 @@ import {
   TextInput, Modal, SafeAreaView, ActivityIndicator 
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { useTheme } from 'react-native-paper'; // MD3 Theme Hook
+import { useTheme , Searchbar} from 'react-native-paper'; // MD3 Theme Hook
 import { JournalStorage, JournalEntry } from '../../services/JournalStorage';
 import { Ionicons } from '@expo/vector-icons';
+import { JournalHeader } from '../../components/journalHeader';
 
 export default function JournalScreen() {
   const theme = useTheme();
@@ -21,6 +22,35 @@ export default function JournalScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingDate, setEditingDate] = useState(""); // The ID (YYYY-MM-DD)
   const [editingText, setEditingText] = useState("");
+  
+  // Searchquery
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 0.Searching 
+  const filteredEntries = useMemo(() =>{ 
+    if(!searchQuery.trim()){
+      return timeline
+    }
+    return timeline.filter(dateIso => {
+      const dateKey = dateIso.split('T')[0];
+      const entry = entryMap[dateKey];
+      const dateString = new Date(dateIso).toDateString().toLowerCase();
+      const query = searchQuery.toLowerCase();
+
+    // Match 1: Date text (e.g. "Feb 14")
+      if (dateString.includes(query)) return true;
+
+      // Match 2: Entry Content or Mood
+      if (entry) {
+        return (
+          entry.content.toLowerCase().includes(query) ||
+          entry.mood.toLowerCase().includes(query)
+        );
+      }
+      
+      return false; // Hide empty days if they don't match the date search
+    });
+  }, [searchQuery, timeline, entryMap]);
 
   // 1. INITIALIZE: Generate Dates & Load Data
   useFocusEffect(
@@ -30,7 +60,7 @@ export default function JournalScreen() {
   );
 
   const initializeData = async () => {
-    // A. Generate Timeline (Last 30 days)
+    // A. Generate Timeline for last 10 days , memory efficiency
     if (timeline.length === 0) {
       const dates = [];
       for (let i = 0; i < 10; i++) {
@@ -116,7 +146,7 @@ export default function JournalScreen() {
   const renderItem = ({ item: dateIsoString }: { item: string }) => {
     const dateObj = new Date(dateIsoString);
     const dateKey = dateObj.toISOString().split('T')[0];
-    const displayDate = dateObj.toDateString(); // "Fri Feb 14 2026"
+    const displayDate = dateObj.toDateString();
     
     const entry = entryMap[dateKey];
     const isToday = new Date().toDateString() === displayDate;
@@ -142,13 +172,13 @@ export default function JournalScreen() {
           <Text style={styles.preview} numberOfLines={3}>{entry.content}</Text>
         ) : (
           <Text style={styles.emptyPlaceholder}>
-             Tap to write a memory... ✍️
+            No memory recorded.. Tap to write... ✍️
           </Text>
         )}
       </Pressable>
     );
   };
-
+  // if (loading) return <ActivityIndicator style={{marginTop:50}} />;
   // 6. RENDER FOOTER
   const renderFooter = () => (
     <View style={styles.footerContainer}>
@@ -168,19 +198,29 @@ export default function JournalScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.header}>Your Timeline ⏳</Text>
-      
+      <JournalHeader/>
+      <View style={styles.searchContainer}>
+        <Searchbar
+          placeholder="Search memories..."
+          onChangeText={setSearchQuery}
+          value={searchQuery}
+          style={styles.searchBar}
+          inputStyle={styles.searchInput}
+          iconColor={theme.colors.primary}
+          elevation={0} // Flat style fits better
+        />
+      </View>
       <FlatList
-        data={timeline}
+        data={filteredEntries}
         keyExtractor={item => item}
         renderItem={renderItem}
         contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
-        ListFooterComponent={renderFooter}
+        ListFooterComponent={!searchQuery ? renderFooter : null}
         showsVerticalScrollIndicator={false}
       />
 
       {/* EDIT MODAL */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={()=>setModalVisible(false)}>
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Pressable onPress={() => setModalVisible(false)}>
@@ -197,7 +237,7 @@ export default function JournalScreen() {
             multiline
             value={editingText}
             onChangeText={setEditingText}
-            placeholder="What happened today?"
+            placeholder="What happened...?"
             placeholderTextColor="#999"
             autoFocus
           />
@@ -209,15 +249,9 @@ export default function JournalScreen() {
 
 // STYLES FACTORY
 const makeStyles = (theme: any) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
+  container: { flex: 1, backgroundColor: theme.colors.tertiaryContainer },
   center: { justifyContent: 'center', alignItems: 'center' },
-  header: { 
-    fontSize: 28, 
-    fontWeight: 'bold', 
-    margin: 20, 
-    color: theme.colors.onBackground,
-    fontFamily: 'SpaceMB' 
-  },
+
   
   // CARD STYLES
   card: { 
@@ -242,7 +276,7 @@ const makeStyles = (theme: any) => StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   
-  date: { fontSize: 16, color: theme.colors.onSurface, fontFamily: 'SpaceMB' },
+  date: { fontSize: 16, color: theme.colors.primary, fontFamily: 'SpaceMB' },
   dateEmpty: { color: theme.colors.outline },
   
   moodBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
@@ -262,10 +296,33 @@ const makeStyles = (theme: any) => StyleSheet.create({
   loadMoreText: { color: theme.colors.onSecondaryContainer, fontWeight: '600', fontFamily: 'SpaceMB' },
 
   // MODAL
-  modalContainer: { flex: 1, backgroundColor: theme.colors.surface },
+  modalContainer: { flex: 1, backgroundColor: theme.colors.surface , marginTop : 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20 },
   cancelText: { fontSize: 18, color: theme.colors.outline, fontFamily: 'SpaceMR' },
   saveText: { fontSize: 18, fontWeight: 'bold', color: theme.colors.primary, fontFamily: 'SpaceMB' },
-  modalTitle: { fontSize: 20, textAlign: 'center', marginBottom: 20, fontFamily: 'SpaceMB', color: theme.colors.onSurface },
+  modalTitle: { fontSize: 20, textAlign: 'center', marginBottom: 20, fontFamily: 'SpaceMB', color: theme.colors.primary },
   input: { fontSize: 18, padding: 20, lineHeight: 28, flex: 1, textAlignVertical: 'top', fontFamily: 'SchoolR', color: theme.colors.onSurface },
+  // --- SEARCH STYLES ---
+  searchContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 10,
+    borderBottomRightRadius : 40,
+    borderBottomLeftRadius : 40,
+  },
+  searchBar: {
+    backgroundColor: theme.colors.background, // Slightly darker than white
+    borderRadius: 12,
+    height: 50,
+  },
+  searchInput: {
+    fontFamily: 'SpaceMR',
+    fontSize: 16,
+    alignSelf: 'center', // Fixes text alignment on some Androids
+  },
+  noResultsText: {
+    textAlign: 'center',
+    marginTop: 40,
+    color: theme.colors.outline,
+    fontFamily: 'SpaceMR',
+  },
 });

@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "mental-health",
-    "slug": "mental-health",
-    "scheme" :"com.isomer.mh",
+    "name": "Kitti",
+    "slug": "kitti-isomer",
+    "scheme" :"com.isomer.kitti",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",

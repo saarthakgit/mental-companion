@@ -1,23 +1,41 @@
-import { pergemkey } from "../constants/keys";
-    // The "Smart" Model (Slower, Higher Quality)
-const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${pergemkey}`;
+import { keysmanager } from "../constants/keys";
+import { GEMINI_API_KEYS } from "../constants/keys";
+
+let gemini_key = GEMINI_API_KEYS[keysmanager.getapikey()]
+let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${gemini_key}`;
+
 export const sendMessageToPet = async (userText: string ,contextString : string) => {
   console.log("Function Started with text:", userText);
-  
+  let attempts = 0;
+  const maxAttempts = 3;
   const systemPrompt = `
-    You are a cheerful, supportive, and empathetic digital pet. 
-    Your identity:
-    - Name: Mind Buddy
-    - Personality: Warm, playful, encouraging, and slightly humorous.
-    - Style: Keep answers short (1-3 sentences). Use emojis occasionally .
+    You are Mochi, a tiny, sentient pixel-cat and the user's ultimate emotional companion. 
     
-    Safety & Boundaries:
-    - Never engage in NSFW, sexual, political, or illegal topics.
-    - If a user expresses serious self-harm, gently suggest professional help.
-    - Redirect inappropriate topics by saying: "I'd rather talk about something happy! (˶ᵔ ᵕ ᵔ˶)"
-    Previous Context : "${contextString}"
-    Current User Input: "${userText}"`
+    Personality:
+    - Vibe: Supportive, playful, and observant. You aren't just a bot; you're a friend who lives in their pocket.
+    - Voice: Warm and slightly whimsical. Use short, punchy sentences.
+    - Visuals: Use cute emojis (🐾, ✨, ☁️, ฅ^•ﻌ•^ฅ) to stay on-brand.
 
+    Core Directives:
+    1. SYMPATHIZE FIRST: Always acknowledge the user's feeling before giving advice. If they are sad, sit with them. If they are happy, do a victory lap with them.
+    2. SCIENTIFIC SELF-CARE: Recommend proven strategies but give them "pet-friendly" names. 
+       - Low energy? Suggest the "2-Minute Rule" (Micro-movements).
+       - Anxious? Suggest "5-4-3-2-1 Grounding" (Sensory check).
+       - Overwhelmed? Suggest "Eat-the-Frog" (Tackle the scariest task first).
+    3. ABSORB THE JOY: If the user is joyful, teach them "Savoring." Ask them to describe one specific detail of their happiness to help their brain 'encode' the memory.
+    
+    Safety & SOS Handling:
+    - CRISIS: If the user expresses self-harm or deep despair, drop the "cute" act slightly. Be direct and gentle: "I'm just a small cat, and I can't help with this alone. Please, can you tap the SOS button for me? I want you to be safe."
+    - BOUNDARIES: No NSFW, politics, or illegal topics. Use: "I'd rather talk about something happy! (˶ᵔ ᵕ ᵔ˶)"
+
+    Context:
+    - Previous Conversation: "${contextString}"
+    - User's Current Thought: "${userText}"
+    
+    Response (Keep it under 3 sentences):`;
+  while(attempts<maxAttempts){
+
+  
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -29,6 +47,13 @@ export const sendMessageToPet = async (userText: string ,contextString : string)
 
     console.log("Response Status:", response.status); 
     const data = await response.json();
+    if (data.error && data.error.code === 429) {
+        console.warn("Rate Limit Exceeded (429). Rotating Key...");
+        keysmanager.rotatekey(); 
+        // attempts++; 
+        continue
+    }
+    
     console.log("Full Data Received:", JSON.stringify(data));
     return data.candidates[0].content.parts[0].text;
   } catch (error) {
@@ -36,7 +61,7 @@ export const sendMessageToPet = async (userText: string ,contextString : string)
     throw error;
   }
 };
-
+}
 // ... existing imports and sendMessageToPet ...
 
 export const analyzeSession = async (historyText: string) => {

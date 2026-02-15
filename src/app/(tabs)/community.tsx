@@ -9,22 +9,25 @@ import {
   TextInput, 
   SafeAreaView,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from 'react-native-paper'; // Import Theme Hook
+import { useTheme } from 'react-native-paper'; 
 import { CommunityStorage, Post } from '../../services/communityStorage'; 
+import { CommunityHeader } from '../../components/communityHeader';
 
 export default function CommunityScreen() {
-  const theme = useTheme(); // 1. Get Theme
-  const styles = useMemo(() => makeStyles(theme), [theme]); // 2. Generate Styles
+  const theme = useTheme(); 
+  const styles = useMemo(() => makeStyles(theme), [theme]); 
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [newPost, setNewPost] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // 1. Load Data on Startup
+  // Load Data
   useEffect(() => {
     loadPosts();
   }, []);
@@ -35,21 +38,20 @@ export default function CommunityScreen() {
     setLoading(false);
   };
 
-  // 2. Handle New Post + SIMULATE REPLY
+  // Handle New Post
   const handlePost = async () => {
     if (!newPost.trim()) return;
     
     const newPostObj: Post = {
       id: Date.now().toString(),
-      author: 'Me (Anonymous)',
-      tag: 'General',
+      author: 'Anonymous', // Simplified for the vibe
+      tag: 'THOUGHT',
       content: newPost,
       hearts: 0,
       replies: [],
       timestamp: Date.now(),
     };
 
-    // Optimistic Update
     const updatedPosts = [newPostObj, ...posts];
     setPosts(updatedPosts);
     await CommunityStorage.savePosts(updatedPosts); 
@@ -57,21 +59,17 @@ export default function CommunityScreen() {
     setNewPost('');
     setModalVisible(false);
 
-    // --- THE DEMO MAGIC (Simulate a Reply) ---
+    // Simulate Reply
     setTimeout(async () => {
       const fakeReply = CommunityStorage.generateFakeReply(newPostObj.id);
-      
       const postsWithReply = updatedPosts.map(p => {
         if (p.id === newPostObj.id) {
           return { ...p, replies: [...p.replies, fakeReply] };
         }
         return p;
       });
-
       setPosts(postsWithReply);
       await CommunityStorage.savePosts(postsWithReply);
-      
-      Alert.alert("New Reply!", "Kind Stranger replied to your post.");
     }, 4000); 
   };
 
@@ -94,24 +92,22 @@ export default function CommunityScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* HEADER */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Tribes 🔥</Text>
-        <Pressable style={styles.addBtn} onPress={() => setModalVisible(true)}>
-          <Ionicons name="add" size={24} color={theme.colors.onPrimary} />
-        </Pressable>
-      </View>
+      <CommunityHeader/>
 
       {/* FEED */}
       <FlatList
         data={posts}
         keyExtractor={item => item.id}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
           <View style={styles.card}>
-            {/* POST HEADER */}
+            {/* CARD TOP ROW */}
             <View style={styles.cardHeader}>
-              <View style={styles.authorContainer}>
-                <View style={styles.avatar} />
+              <View style={styles.authorRow}>
+                <View style={styles.avatarPlaceholder}>
+                   <Text style={styles.avatarText}>{item.author.charAt(0)}</Text>
+                </View>
                 <Text style={styles.authorName}>{item.author}</Text>
               </View>
               <View style={styles.tagBadge}>
@@ -119,19 +115,22 @@ export default function CommunityScreen() {
               </View>
             </View>
             
-            {/* CONTENT */}
+            {/* CONTENT (Handwritten Vibe) */}
             <Text style={styles.cardContent}>{item.content}</Text>
             
             {/* REPLIES */}
             {item.replies.length > 0 && (
               <View style={styles.replySection}>
-                <View style={{flexDirection:'row', alignItems:'center', marginBottom: 4}}>
-                  <Ionicons name="return-down-forward" size={12} color={theme.colors.outline} />
-                  <Text style={styles.replyLabel}> Recent Reply</Text>
+                <View style={styles.replyHeader}>
+                  <Ionicons name="return-down-forward" size={14} color={theme.colors.primary} />
+                  <Text style={styles.replyLabel}> RESPONSE</Text>
                 </View>
                 <Text style={styles.replyText}>"{item.replies[0].content}"</Text>
               </View>
             )}
+
+            {/* DIVIDER */}
+            <View style={styles.divider} />
 
             {/* ACTIONS */}
             <View style={styles.cardFooter}>
@@ -139,185 +138,285 @@ export default function CommunityScreen() {
                 style={styles.actionBtn} 
                 onPress={() => handleHeart(item.id)}
               >
-                <Ionicons name="heart-outline" size={20} color={theme.colors.error} />
-                <Text style={[styles.actionText, { color: theme.colors.error }]}>{item.hearts}</Text>
+                <Ionicons 
+                  name={item.hearts > 0 ? "heart" : "heart-outline"} 
+                  size={20} 
+                  color={item.hearts > 0 ? theme.colors.error : theme.colors.outline} 
+                />
+                <Text style={styles.actionText}>{item.hearts}</Text>
               </Pressable>
               
               <View style={styles.actionBtn}>
-                <Ionicons name="chatbubble-outline" size={20} color={theme.colors.secondary} />
+                <Ionicons name="chatbubble-outline" size={18} color={theme.colors.onSurfaceVariant} />
                 <Text style={styles.actionText}>{item.replies.length}</Text>
               </View>
+
+              <Text style={styles.dateText}>JUST NOW</Text>
             </View>
           </View>
         )}
       />
 
+      {/* FAB (Floating Action Button) - MOVED TO BOTTOM RIGHT */}
+      <Pressable 
+        style={styles.fab} 
+        onPress={() => setModalVisible(true)}
+      >
+        <Ionicons name="pencil" size={26} color={theme.colors.onPrimary} />
+      </Pressable>
+
       {/* NEW POST MODAL */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={styles.modalContainer}>
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="formSheet">
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalContainer}
+        >
           <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>NEW ENTRY</Text>
             <Pressable onPress={() => setModalVisible(false)}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable style={styles.postBtn} onPress={handlePost}>
-              <Text style={styles.postBtnText}>Post</Text>
+              <Ionicons name="close" size={28} color={theme.colors.onSurface} />
             </Pressable>
           </View>
           
           <TextInput
             style={styles.input}
-            placeholder="Share your feelings anonymously..."
+            placeholder="Write something real..."
             placeholderTextColor={theme.colors.outline}
             multiline
             value={newPost}
             onChangeText={setNewPost}
             autoFocus
           />
-        </SafeAreaView>
+
+          <View style={styles.modalFooter}>
+            <Pressable style={styles.postBtn} onPress={handlePost}>
+              <Text style={styles.postBtnText}>PUBLISH</Text>
+              <Ionicons name="arrow-forward" size={16} color={theme.colors.onPrimary} />
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
 }
 
-// --- THEMED STYLES FACTORY ---
 const makeStyles = (theme: any) => StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: theme.colors.background 
+    backgroundColor: theme.colors.tertiaryContainer 
   },
   
-  // HEADER
+  // 1. HEADER
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: theme.colors.background, // Clean look
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 10,
+    backgroundColor: theme.colors.background,
   },
   headerTitle: { 
-    fontSize: 28, 
-    color: theme.colors.onBackground,
-    fontFamily: 'SpaceMB' 
+    fontSize: 42, 
+    color: theme.colors.primary,
+    fontFamily: 'Freak', // Font Requirement: Titles
+    marginBottom: -5,
   },
-  addBtn: {
-    backgroundColor: theme.colors.primary,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    // MD3 Elevation
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+  headerSubtitle: {
+    fontSize: 12,
+    color: theme.colors.outline,
+    fontFamily: 'Code', // Font Requirement: Labels
+    letterSpacing: 2,
   },
 
-  // CARD
+  // 2. LIST & FAB
+  listContent: {
+    padding: 16,
+    paddingBottom: 100, // Space for FAB
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 30,
+    right: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    // Strong Shadow
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)'
+  },
+
+  // 3. CARD DESIGN
   card: {
     backgroundColor: theme.colors.surface,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 20,
+    // Soft Lift
     shadowColor: theme.colors.shadow,
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  authorContainer: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { 
-    width: 32, 
-    height: 32, 
-    borderRadius: 16, 
-    backgroundColor: theme.colors.surfaceVariant, 
-    marginRight: 10 
+  cardHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'flex-start',
+    marginBottom: 15 
+  },
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: theme.colors.primaryContainer,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  avatarText: {
+    fontFamily: 'Freak',
+    fontSize: 16,
+    color: theme.colors.primary,
   },
   authorName: { 
     color: theme.colors.onSurface, 
-    fontFamily: 'SpaceMB',
-    fontSize: 14
+    fontFamily: 'Freak', // Font Requirement: Titles
+    fontSize: 18,
   },
   tagBadge: { 
-    backgroundColor: theme.colors.secondaryContainer, 
-    paddingHorizontal: 10, 
-    paddingVertical: 5, 
-    borderRadius: 8 
+    backgroundColor: theme.colors.surfaceVariant, 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 6,
   },
   tagText: { 
-    color: theme.colors.onSecondaryContainer, 
-    fontSize: 12, 
-    fontFamily: 'SpaceMB' 
+    color: theme.colors.onSurfaceVariant, 
+    fontSize: 10, 
+    fontFamily: 'Code', // Font Requirement: Labels
+    textTransform: 'uppercase',
   },
-  
-  // CONTENT
+
+  // 4. CONTENT
   cardContent: { 
-    fontSize: 16, 
+    fontSize: 18, // Slightly larger for handwritten font
     color: theme.colors.onSurface, 
-    lineHeight: 24, 
+    lineHeight: 26, 
     marginBottom: 16,
-    fontFamily: 'SpaceMR' 
+    fontFamily: 'SchoolR' // Font Requirement: Small Texts / Body
   },
   
-  // REPLY SECTION
+  // 5. REPLY
   replySection: {
-    backgroundColor: theme.colors.surfaceVariant, // Subtle bubble
-    padding: 12,
-    borderRadius: 12,
+    backgroundColor: theme.colors.secondaryContainer, 
+    padding: 16,
+    borderRadius: 16,
     marginBottom: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primary,
+  },
+  replyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   replyLabel: {
     fontSize: 10,
-    color: theme.colors.outline,
-    fontFamily: 'SpaceMB',
+    color: theme.colors.primary,
+    fontFamily: 'Code', // Font Requirement: Labels
   },
   replyText: {
     fontSize: 15,
-    color: theme.colors.onSurfaceVariant,
-    fontFamily: 'SchoolR', // Handwriting style for whispers
-    fontStyle: 'italic',
+    color: theme.colors.onSecondaryContainer,
+    fontFamily: 'SchoolR', // Font Requirement: Small Texts
+    lineHeight: 20,
   },
 
-  // FOOTER
+  divider: {
+    height: 1,
+    backgroundColor: theme.colors.outlineVariant,
+    marginBottom: 12,
+    opacity: 0.5
+  },
+
+  // 6. FOOTER ACTIONS
   cardFooter: { 
     flexDirection: 'row', 
-    borderTopWidth: 1, 
-    borderTopColor: theme.colors.outlineVariant, 
-    paddingTop: 12 
+    alignItems: 'center',
   },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', marginRight: 24 },
+  actionBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginRight: 20,
+    backgroundColor: theme.colors.background,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
   actionText: { 
     marginLeft: 6, 
-    color: theme.colors.secondary, 
-    fontFamily: 'SpaceMB',
-    fontSize: 14
+    color: theme.colors.onSurfaceVariant, 
+    fontFamily: 'Code', // Font Requirement: Labels
+    fontSize: 12
   },
-  
-  // MODAL
-  modalContainer: { flex: 1, backgroundColor: theme.colors.surface },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20 },
-  cancelText: { 
-    fontSize: 16, 
+  dateText: {
+    marginLeft: 'auto',
     color: theme.colors.outline,
-    fontFamily: 'SpaceMR' 
+    fontFamily: 'Code', // Font Requirement: Labels
+    fontSize: 10,
+  },
+
+  // 7. MODAL STYLES
+  modalContainer: { 
+    flex: 1, 
+    backgroundColor: theme.colors.surface,
+    padding: 24,
+  },
+  modalHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 20,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontFamily: 'Freak',
+    color: theme.colors.onSurface,
+  },
+  input: { 
+    fontSize: 20, 
+    flex: 1,
+    textAlignVertical: 'top',
+    color: theme.colors.onSurface,
+    fontFamily: 'SchoolR', // Consistent journaling feel
+    lineHeight: 28,
+  },
+  modalFooter: {
+    marginBottom: 20,
+    alignItems: 'flex-end'
   },
   postBtn: { 
     backgroundColor: theme.colors.primary, 
-    paddingHorizontal: 20, 
-    paddingVertical: 8, 
-    borderRadius: 20 
+    paddingHorizontal: 24, 
+    paddingVertical: 12, 
+    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 4,
   },
   postBtnText: { 
     color: theme.colors.onPrimary, 
-    fontFamily: 'SpaceMB' 
-  },
-  input: { 
-    fontSize: 18, 
-    padding: 20, 
-    minHeight: 150, 
-    textAlignVertical: 'top',
-    color: theme.colors.onSurface,
-    fontFamily: 'SpaceMR' 
+    fontFamily: 'Code', 
+    fontSize: 14,
+    marginRight: 8,
   },
 });

@@ -1,9 +1,4 @@
-import React, { useState, useRef , useEffect , useCallback } from 'react';
-import { useTheme } from 'react-native-paper';
-import { AnalysisStorage } from '../../services/AnalysisStorage';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router';
-import { JournalStorage } from '../../services/JournalStorage';
+import React, { useState, useRef , useEffect , useCallback, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -15,11 +10,22 @@ import {
   KeyboardAvoidingView, 
   Platform, 
   SafeAreaView,
-  ActivityIndicator 
+  ActivityIndicator,
+  ScrollView // Import ScrollView
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import LottieView from 'lottie-react-native';
+import { useTheme } from 'react-native-paper';
+import { useRouter, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Services & Components
+import { EMPTY_CHAT_PROMPTS } from '../../services/randomPrompts';
+import { AnalysisStorage } from '../../services/AnalysisStorage';
+import { JournalStorage } from '../../services/JournalStorage';
 import { sendMessageToPet , analyzeSession } from '../../services/geminichatsetup';
-import { useMemo } from 'react';
+import { HomeHeader } from '../../components/Header';
+import { SOSButton } from '../../components/SOS';
+
 // Define the shape of a message
 type Message = {
   id: string;
@@ -27,254 +33,250 @@ type Message = {
   sender: 'user' | 'pet';
 };
 
+const CAT_ANIMATIONS = [
+  require('../../assets/animations/cat1.json'),
+  require('../../assets/animations/cat2.json'),
+  require('../../assets/animations/cat3.json'),
+  require('../../assets/animations/cat4.json'),
+  require('../../assets/animations/cat5.json'),
+];
+
 const HomeScreen = () => {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const router = useRouter();
+  
+  // State
+  const [currentCat, setCurrentCat] = useState(CAT_ANIMATIONS[0]);
   const [modalVisible, setModalVisible] = useState(false);
   const [msg, setMsg] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
-  const [vibe, setVibe] = useState({ score: 50, label: "Ready to Chat 🐾", summary: "Say hello to start!" });
+  const [randomPrompt, setRandomPrompt] = useState(EMPTY_CHAT_PROMPTS[0]);
+  const [vibe, setVibe] = useState({ score: 50, label: "", summary: "Say hello to start!" });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  // Auto-scroll to bottom of chat
+  const [todayJournal, setTodayJournal] = useState<any>(null);
+
   const flatListRef = useRef<FlatList>(null);
 
+  // 1. Load Journal & Prompts on Focus
+  useFocusEffect(
+    useCallback(() => {
+      const randomIndex = Math.floor(Math.random() * EMPTY_CHAT_PROMPTS.length);
+      setRandomPrompt(EMPTY_CHAT_PROMPTS[randomIndex]);
+      loadTodayJournal();
+    }, [])
+  );
+
+  const loadTodayJournal = async () => {
+    const entry = await JournalStorage.getTodayEntry();
+    setTodayJournal(entry);
+  };
+
+  // 2. Randomize Cat on Mount/Modal Close
+  useEffect(() => {
+    const randomIndex = Math.floor(Math.random() * CAT_ANIMATIONS.length);
+    setCurrentCat(CAT_ANIMATIONS[randomIndex]);
+  }, [modalVisible]);
+
+  // 3. Reset Chat Logic (New Day)
+  useEffect(() => {
+    if (modalVisible) { 
+      checkAndResetChat();
+    }
+  }, [modalVisible]);
+
+  const checkAndResetChat = async () => {
+    try {
+      const lastMsgTime = await AsyncStorage.getItem('last_message_time');
+      if (lastMsgTime) {
+        const lastDate = new Date(parseInt(lastMsgTime)).toDateString();
+        const today = new Date().toDateString();
+
+        if (lastDate !== today) {
+          console.log("☀️ New Day Detected! Resetting...");
+          const greetingMsg: Message = {
+            id: Date.now().toString(),
+            text: "It's a brand new day! ☀️ How are you feeling?",
+            sender: 'pet' 
+          };
+          setMessages([greetingMsg]);
+          await AsyncStorage.setItem('last_message_time', Date.now().toString());
+          await AsyncStorage.setItem('current_chat_session', JSON.stringify([greetingMsg]));
+        }
+      }
+    } catch (error) {
+      console.log("Error resetting chat:", error);
+    }
+  };
+
+  // 4. Chat Handlers
   const handleSend = async () => {
     if (!msg.trim()) return;
-
     const userText = msg;
     setMsg(""); 
     setLoading(true);
 
-    // FIX 1: Explicitly tell TS this object is a 'Message'
-    const newUserMsg: Message = { 
-      id: Date.now().toString(), 
-      text: userText, 
-      sender: 'user' 
-    };
-    
-    // Optimistically update UI
+    const newUserMsg: Message = { id: Date.now().toString(), text: userText, sender: 'user' };
     const updatedMessages = [...messages, newUserMsg];
     setMessages(updatedMessages);
 
-    // 2. CREATE THE CONTEXT STRING
     const recentHistory = updatedMessages.slice(-3); 
-    
-    const contextString = recentHistory
-      .map(m => `${m.sender === 'user' ? 'User' : 'Pet'}: ${m.text}`)
-      .join('\n');
+    const contextString = recentHistory.map(m => `${m.sender === 'user' ? 'User' : 'Pet'}: ${m.text}`).join('\n');
 
     try {
-      // 3. Send Input + Context
       const aiResponse = await sendMessageToPet(userText, contextString);
-      
-      // FIX 2: Explicitly tell TS this object is a 'Message'
-      const aiMsg: Message = { 
-        id: (Date.now() + 1).toString(), 
-        text: aiResponse, 
-        sender: 'pet' 
-      };
-      
+      const aiMsg: Message = { id: (Date.now() + 1).toString(), text: aiResponse, sender: 'pet' };
       setMessages(prev => [...prev, aiMsg]);
-      const currentTimestamp = Date.now().toString();
-      await AsyncStorage.setItem('last_message_time', currentTimestamp);
-
+      await AsyncStorage.setItem('last_message_time', Date.now().toString());
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
+
   const handleCloseChat = async () => {
-    console.log("modal closed fn called")
-    setModalVisible(false); // 1. Close Modal immediately
+    setModalVisible(false);
+    if (messages.length < 2) return; 
+
+    setIsAnalyzing(true);
+    const historyText = messages.slice(-10).map(m => `${m.sender}: ${m.text}`).join('\n');
     
-    if (messages.length < 2) return; // Don't analyze empty chats
-
-    setIsAnalyzing(true); // 2. Show loading on Home Screen
-
-    // 3. Prepare History String
-    const historyText = messages
-      .slice(-10) // Only analyze last 10 messages for speed
-      .map(m => `${m.sender}: ${m.text}`)
-      .join('\n');
-
-    // 4. Call Gemini
-    console.log("calling api")
+    console.log("calling api");
     const result = await analyzeSession(historyText);
     const journalContent = result.journal_snippet || "Recorded a session today.";
-    await JournalStorage.saveEntry(
-    journalContent, 
-    result.score, 
-    result.label
-  );
-  //   await AnalysisStorage.saveRecord({
-  //   score: result.score,
-  //   label: result.label,
-  //   summary: result.summary
-  // });
-    await loadTodayJournal()
-    setVibe(result); // 5. Update UI
-    setIsAnalyzing(false);
-    setMessages([])
-  };
-  // Inside HomeScreen.tsx
-const [todayJournal, setTodayJournal] = useState<any>(null);
-
-const loadTodayJournal = async () => {
-  const entry = await JournalStorage.getTodayEntry();
-  setTodayJournal(entry);
-};
-
-// Load on mount
-useFocusEffect(
-  useCallback(() => {
-    loadTodayJournal();
-  }, [])
-);
-
-
-const checkAndResetChat = async () => {
-  try {
-    const lastMsgTime = await AsyncStorage.getItem('last_message_time');
     
-    if (lastMsgTime) {
-      const lastDate = new Date(parseInt(lastMsgTime)).toDateString();
-      const today = new Date().toDateString();
-
-      // IF IT'S A NEW DAY:
-      if (lastDate !== today) {
-        console.log("☀️ New Day Detected! Resetting...");
-
-        // 1. Create the Greeting
-        const greetingMsg = {
-          id: Date.now().toString(),
-          text: "It's a brand new day! ☀️ How are you feeling?",
-          sender: 'pet' // or 'isomer'
-        } as Message;
-
-        // 2. Set State (One call is enough)
-        setMessages([greetingMsg]);
-
-        // 3. IMPORTANT: Update Storage IMMEDIATELY
-        // This prevents the loop! Now 'last_message_time' is Today.
-        await AsyncStorage.setItem('last_message_time', Date.now().toString());
-        await AsyncStorage.setItem('current_chat_session', JSON.stringify([greetingMsg]));
-      }
-    }
-  } catch (error) {
-    console.log("Error resetting chat:", error);
-  }
-};
-
-// Triggers every time you open/close the modal
-useEffect(() => {
-  if (modalVisible) { // Only check when OPENING, not closing
-    checkAndResetChat();
-  }
-}, [modalVisible]);
+    await JournalStorage.saveEntry(journalContent, result.score, result.label);
+    await AnalysisStorage.saveRecord({ score: result.score, label: result.label, summary: result.summary });
+    await loadTodayJournal();
+    
+    setVibe(result); 
+    setIsAnalyzing(false);
+    setMessages([]);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      
-      {/* --- HOME SCREEN CONTENT --- */}
-      <View style={styles.contentContainer}>
-        <View style={styles.petPlaceholder}>
-          <Text style={styles.placeholderText}>[ Pet Animation Here ]</Text>
-        </View>
-        <View style={styles.teaserContainer}>
-        {isAnalyzing ? (
-          <View style={{ padding: 20, alignItems: 'center' }}>
-            <ActivityIndicator color="#6C5CE7" />
-            <Text style={{ marginTop: 10, color: '#999' }}>Analyzing your vibe...</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.teaserHeader}>
-              <Text style={styles.teaserTitle}>Current Vibe</Text>
-              <Text style={styles.teaserValue}>{vibe.label}</Text>
-            </View>
-            
-            {/* Visual Score Bar */}
-            <View style={styles.progressBarBg}>
-              <View style={[
-                styles.progressBarFill, 
-                { width: `${vibe.score}%`, backgroundColor: vibe.score > 50 ? '#6C5CE7' : '#FF7675' }
-              ]} />
-            </View>
-
-            <Text style={styles.summaryText}>"{vibe.summary}"</Text>
-
-            <Pressable 
-              style={styles.detailBtn}
-              onPress={() => router.push('/(tabs)/analysis')}
-            >
-              <Text style={styles.detailBtnText}>See Detailed Stats →</Text>
-            </Pressable>
-          </>
-        )}
-      </View>
-      </View>
-
-      {/* --- BOTTOM TRIGGER INPUT --- */}
-      <Pressable 
-        style={styles.fakeInputContainer} 
-        onPress={() =>{ 
-          console.log("loading chat...")
-          setModalVisible(true)}}
+      {/* Header stays fixed at top */}
+      <HomeHeader/>
+    <SOSButton/>
+      {/* Main Scrollable Content */}
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.fakeInputText}>Talk to me...</Text>
-      </Pressable>
-          {todayJournal && (
-  <View style={styles.journalCard}>
-    <View style={styles.journalHeader}>
-      <Text style={styles.journalTitle}>Today's Story 📖</Text>
-      <Pressable onPress={() => router.push('/(tabs)/journal')}>
-        <Text style={styles.editLink}>Edit</Text>
-      </Pressable>
-    </View>
-    
-    <Text style={styles.journalContent} numberOfLines={3}>
-      {todayJournal.content}
-    </Text>
-    
-    <Pressable 
-      style={styles.readMoreBtn}
-      onPress={() => router.push('/(tabs)/journals')}
-    >
-      <Text style={styles.readMoreText}>View All Memories →</Text>
-    </Pressable>
-  </View>
-)}
-      {/* --- THE CHAT MODAL --- */}
+        
+        {/* --- 1. CHAT TRIGGER (Moved to Top) --- */}
+        <View style={styles.sectionContainer}>
+          <Pressable 
+            style={styles.fakeInputContainer} 
+            onPress={() => setModalVisible(true)}
+          >
+            <View>
+          <Text style={{fontSize: 18,
+    color: theme.colors.primary,
+    fontFamily: 'Freak',
+    marginBottom:5}}>Tap to Chat 🐱</Text>
+
+            <Text style={styles.fakeInputText}>{randomPrompt}</Text>
+            </View>
+            {/* Cat Animation inside the card */}
+            <View style={styles.catWrapper}>
+              <LottieView
+                source={currentCat}
+                autoPlay
+                loop
+                style={{ width: 90, height: 90 }}
+              />
+            </View>
+          </Pressable>
+        </View>
+
+
+        {/* --- 2. VIBE ANALYSIS --- */}
+        <View style={styles.teaserContainer}>
+          {isAnalyzing ? (
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <ActivityIndicator color={theme.colors.primary} />
+              <Text style={{ marginTop: 10, color: theme.colors.outline }}>Analyzing your vibe...</Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.teaserHeader}>
+                <Text style={styles.cardTitle}>Current Vibe:</Text>
+                <Text style={styles.teaserValue}>{vibe.label}</Text>
+              </View>
+              
+              <View style={styles.progressBarBg}>
+                <View style={[
+                  styles.progressBarFill, 
+                  { width: `${vibe.score}%`, backgroundColor: vibe.score > 50 ? theme.colors.primary : theme.colors.error }
+                ]} />
+              </View>
+
+              <Text style={styles.summaryText}>"{vibe.summary}"</Text>
+
+              <Pressable 
+                style={styles.detailBtn}
+                onPress={() => router.push('/(tabs)/analysis')}
+              >
+                <Text style={styles.detailBtnText}>See Detailed Stats →</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+
+
+        {/* --- 3. JOURNAL CARD --- */}
+        <View style={styles.journalCard}>
+          <View style={styles.journalHeader}>
+            <Text style={styles.cardTitle}>Today's Story:</Text>
+            <Pressable onPress={() => router.push('/(tabs)/journals')}>
+              <Text style={styles.editLink}>Edit</Text>
+            </Pressable>
+          </View>
+
+          {todayJournal ? (
+            <Text style={styles.journalContent} numberOfLines={3}>
+              {todayJournal.content}
+            </Text>
+          ) : (
+            <Text style={[styles.journalContent, { opacity: 0.6 }]} numberOfLines={3}>
+              No memory recorded for today. 
+              Tell me via chat or tap edit to write yourself!
+            </Text>
+          )}
+
+          <Pressable 
+            style={styles.readMoreBtn}
+            onPress={() => router.push('/(tabs)/journals')}
+          >
+            <Text style={styles.readMoreText}>View All Memories →</Text>
+          </Pressable>
+        </View>
+
+      </ScrollView>
+
+      {/* --- CHAT MODAL (Full Screen Overlay) --- */}
       <Modal
         animationType="slide"
         transparent={false}
         visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)
-          }
+        onRequestClose={() => setModalVisible(false)}
       >
-        {/* SAFE AREA IS THE ROOT */}
         <SafeAreaView style={styles.modalContainer}>
-          
-          {/* HEADER (Stays fixed at top) */}
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Chat with Isomer</Text>
+            <Text style={styles.modalTitle}>Chat with Kitti</Text>
             <Pressable onPress={() => handleCloseChat()} style={styles.closeBtn}>
               <Text style={styles.closeText}>End Chat</Text>
             </Pressable>
           </View>
 
-          {/* KEYBOARD AVOIDING VIEW WRAPS THE LIST AND INPUT */}
           <KeyboardAvoidingView 
             style={{ flex: 1 }} 
             behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
           >
-            
-            {/* 1. CHAT LIST (Takes all available space) */}
             <FlatList
               ref={flatListRef}
               data={messages}
@@ -298,14 +300,13 @@ useEffect(() => {
               }
             />
 
-            {/* 2. INPUT AREA (Sits at the bottom) */}
             <View style={styles.inputArea}>
               <TextInput 
                 style={styles.textInput}
                 value={msg}
                 onChangeText={setMsg}
                 placeholder="Type your message..."
-                placeholderTextColor="#999"
+                placeholderTextColor={theme.colors.outline}
                 autoFocus={true}
               />
               <Pressable 
@@ -335,175 +336,78 @@ useEffect(() => {
 export default HomeScreen;
 
 const makeStyles = (theme: any) => StyleSheet.create({
-  // 1. MAIN CONTAINERS
+  // 1. LAYOUT
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background, // MD3 Background
+    backgroundColor: theme.colors.tertiaryContainer,
   },
-  contentContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  scrollContent: {
+    padding: 20,
+    gap: 24, // Defines space between sections
+    paddingBottom: 100, // Extra space at bottom
   },
-  
-  // 2. TYPOGRAPHY (Titles = SpaceMB)
-  title: {
-    fontSize: 24,
-    marginBottom: 20,
-    color: theme.colors.primary, // User Request
-    fontFamily: 'SpaceMB',       // Bold Mono
+  sectionContainer: {
+    width: '100%',
+    marginTop : 20
   },
 
-  // 3. PET AREA
-  petPlaceholder: {
-    width: 200,
-    height: 200,
-    backgroundColor: theme.colors.surfaceVariant, // Softer than grey
-    borderRadius: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: theme.colors.outline,
+  // 2. TYPOGRAPHY
+  sectionTitle: {
+    fontSize: 18,
+    marginBottom: 10,
+    color: theme.colors.primary,
+    fontFamily: 'Freak',
+    paddingLeft: 5,
   },
-  placeholderText: {
-    color: theme.colors.onSurfaceVariant,
-    fontFamily: 'SchoolR', // Handwriting font
+  cardTitle: { 
+    fontSize: 18, 
+    color: theme.colors.primary, 
+    fontFamily: 'Freak',
   },
 
-  // 4. FAKE INPUT (The Trigger)
+  // 3. INPUT CARD (Trigger)
   fakeInputContainer: {
-    backgroundColor: theme.colors.surface, // Card color
-    margin: 20,
-    padding: 15,
-    borderRadius: 25,
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    // Soft MD3 Shadow
+    backgroundColor: theme.colors.surface, 
+    
+    padding: 20,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
     shadowColor: theme.colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
+    height: 110,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    overflow: 'hidden', // Keeps cat cut off cleanly if needed
   },
   fakeInputText: {
-    color: theme.colors.secondary,
+    color: theme.colors.onSurfaceVariant,
+    opacity: 0.7,
     fontSize: 16,
-    fontFamily: 'SpaceMR', // Regular Mono
+    width: '70%',
+    fontFamily: 'SchoolR', 
+    lineHeight: 22,
   },
-
-  // 5. CHAT MODAL
-  modalContainer: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surface,
-    zIndex: 1,
-  },
-  modalTitle: {
-    fontSize: 18,
-    color: theme.colors.onSurface,
-    fontFamily: 'SpaceMB', // Bold Mono
-  },
-  closeBtn: {
-    padding: 5,
-  },
-  closeText: {
-    color: theme.colors.primary,
-    fontSize: 16,
-    fontFamily: 'SpaceMR', 
-  },
-
-  // 6. CHAT BUBBLES (Chats = SpaceMR)
-  messageBubble: {
-    maxWidth: '80%',
-    padding: 12,
-    borderRadius: 20,
-    marginBottom: 10,
-  },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: theme.colors.primary, // MD3 Primary
-    borderBottomRightRadius: 2,
-  },
-  petBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: theme.colors.secondaryContainer, // MD3 Secondary Container
-    borderBottomLeftRadius: 2,
-  },
-  userText: {
-    color: theme.colors.onPrimary, // Text on Primary is usually White
-    fontSize: 16,
-    fontFamily: 'SpaceMR',
-  },
-  petText: {
-    color: theme.colors.onSecondaryContainer, // Darker text for readability
-    fontSize: 16,
-    fontFamily: 'SpaceMR',
-  },
-
-  // 7. EMPTY STATES
-  emptyContainer: {
-    alignItems: 'center',
-    marginTop: 50,
-  },
-  emptyText: {
-    color: theme.colors.outline,
-    fontSize: 16,
-    fontFamily: 'SchoolR', // Description font
-  },
-
-  // 8. INPUT AREA
-  inputArea: {
-    flexDirection: 'row',
-    padding: 10,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surface,
-    alignItems: 'center',
-  },
-  textInput: {
-    flex: 1,
-    backgroundColor: theme.colors.surfaceVariant,
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    fontSize: 16,
-    maxHeight: 100,
-    color: theme.colors.onSurface,
-    fontFamily: 'SpaceMR',
-  },
-  sendBtn: {
-    marginLeft: 10,
-    backgroundColor: theme.colors.primary,
-    borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+  catWrapper: {
+    position : "absolute",
+    width: 90,
+    height: 90,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  sendBtnText: {
-    color: theme.colors.onPrimary,
-    fontFamily: 'SpaceMB',
+    right : 20, // Pl cat slightly to edge
   },
 
-  // 9. TEASER CARD (Vibe Check)
+  // 4. VIBE CARD
   teaserContainer: {
-    margin: 20,
-    marginTop: 0,
     padding: 20,
-    backgroundColor: theme.colors.surface, // Card
-    borderRadius: 20,
-    // MD3 Elevation Level 2
+    backgroundColor: theme.colors.surface,
+    borderRadius: 24,
     shadowColor: theme.colors.shadow,
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
   },
   teaserHeader: {
@@ -511,15 +415,11 @@ const makeStyles = (theme: any) => StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  teaserTitle: { 
-    fontSize: 16, 
-    color: theme.colors.secondary, 
-    fontFamily: 'SpaceMB',
-  },
   teaserValue: { 
     fontSize: 18, 
     color: theme.colors.primary, 
-    fontFamily: 'SpaceMB',
+    fontFamily: 'Freak',
+    // opacity : 0.7
   },
   progressBarBg: { 
     height: 8, 
@@ -530,13 +430,13 @@ const makeStyles = (theme: any) => StyleSheet.create({
   progressBarFill: { 
     height: '100%', 
     borderRadius: 4,
-    // Note: Background color for fill is usually handled inline based on score
   },
   summaryText: { 
-    fontSize: 14, 
+    fontSize: 15, 
     color: theme.colors.onSurfaceVariant, 
     marginBottom: 15, 
-    fontFamily: 'SchoolR', // Handwriting style for summary
+    fontFamily: 'SchoolR', 
+    lineHeight: 22,
   },
   detailBtn: { 
     alignSelf: 'flex-end' 
@@ -544,19 +444,17 @@ const makeStyles = (theme: any) => StyleSheet.create({
   detailBtnText: { 
     color: theme.colors.primary, 
     fontSize: 14,
-    fontFamily: 'SpaceMB' 
+    fontFamily: 'Freak' 
   },
 
-  // 10. JOURNAL CARD
+  // 5. JOURNAL CARD
   journalCard: {
-    marginHorizontal: 20,
-    marginBottom: 20,
     padding: 20,
     backgroundColor: theme.colors.surface,
-    borderRadius: 20,
+    borderRadius: 24,
     shadowColor: theme.colors.shadow,
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
   },
   journalHeader: {
@@ -565,34 +463,126 @@ const makeStyles = (theme: any) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  journalTitle: {
-    fontSize: 18,
-    color: theme.colors.onSurface,
-    fontFamily: 'SpaceMB',
-  },
   editLink: {
     fontSize: 14,
     color: theme.colors.primary,
-    fontFamily: 'SpaceMB',
+    fontFamily: 'Freak',
   },
   journalContent: {
     fontSize: 15,
     color: theme.colors.onSurfaceVariant,
-    lineHeight: 22,
+    lineHeight: 24,
     marginBottom: 15,
-    fontFamily: 'SchoolR', // Handwriting style for diary
+    fontFamily: 'SchoolR', 
   },
   readMoreBtn: {
-    alignSelf: 'flex-start',
+    alignSelf: 'flex-end',
     backgroundColor: theme.colors.secondaryContainer,
-    paddingHorizontal: 15,
+    paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
   },
   readMoreText: {
     fontSize: 12,
     color: theme.colors.onSecondaryContainer,
+    fontFamily: 'Freak',
+  },
+
+  // 6. MODAL & CHAT STYLES
+  modalContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surface,
+  },
+  modalTitle: {
+    fontSize: 20,
+    color: theme.colors.onSurface,
+    fontFamily: 'Freak',
+  },
+  closeBtn: {
+    padding: 5,
+  },
+  closeText: {
+    color: theme.colors.error, // Changed to Error color for "End"
+    fontSize: 16,
+    fontFamily: 'Freak', 
+  },
+  messageBubble: {
+    maxWidth: '85%',
+    padding: 14,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+  userBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: theme.colors.primary,
+    borderBottomRightRadius: 4,
+  },
+  petBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.secondaryContainer,
+    borderBottomLeftRadius: 4,
+  },
+  userText: {
+    color: theme.colors.onPrimary,
+    fontSize: 16,
+    fontFamily: 'SchoolR',
+    lineHeight: 22,
+  },
+  petText: {
+    color: theme.colors.onSecondaryContainer,
+    fontSize: 16,
+    fontFamily: 'SchoolR',
+    lineHeight: 22,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    marginTop: 60,
+  },
+  emptyText: {
+    color: theme.colors.outline,
+    fontSize: 16,
+    fontFamily: 'SchoolR',
+  },
+  inputArea: {
+    flexDirection: 'row',
+    padding: 15,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+  },
+  textInput: {
+    flex: 1,
+    backgroundColor: theme.colors.surfaceVariant,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    fontSize: 16,
+    maxHeight: 100,
+    color: theme.colors.onSurface,
+    fontFamily: 'SchoolR',
+  },
+  sendBtn: {
+    marginLeft: 10,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 50,
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendBtnText: {
+    color: theme.colors.onPrimary,
     fontFamily: 'SpaceMB',
+    fontSize: 12
   },
 });
-

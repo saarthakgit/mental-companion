@@ -9,6 +9,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { LineChart, PieChart } from 'react-native-chart-kit';
 import { AnalysisStorage, VibeRecord } from '../../services/AnalysisStorage';
+import { AnalyticsHeader } from '../../components/analyticsHeader';
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -167,10 +168,31 @@ const loadData = async () => {
     ? Math.round(history.reduce((a, b) => a + b.score, 0) / history.length) 
     : 0;
 
-  let feedback = "Start chatting to see your trends!";
-  if (averageScore > 75) feedback = "You're thriving! Keep up the great habits. 🌟";
-  else if (averageScore > 50) feedback = "You're doing okay. Ups and downs are normal. 🌤️";
-  else if (history.length > 0) feedback = "It's been a tough run. Remember to take breaks. 💙";
+let feedback = "I'm ready to listen whenever you're ready to talk. 🐾";
+
+if (history.length > 0) {
+  if (averageScore <= 10) {
+    feedback = "Everything feels heavy; please use the SOS button or call a friend right now. 🫂";
+  } else if (averageScore <= 20) {
+    feedback = "have you heard of the 8-Ounce Rule? Drink some water now. 💧";
+  } else if (averageScore <= 30) {
+    feedback = "Energy is low; have you heard of the 2-Minute Rule? Just stretch for a moment. 🧊";
+  } else if (averageScore <= 40) {
+    feedback = "have you heard of the **5-4-3-2-1 Rule?  ✋";
+  } else if (averageScore <= 50) {
+    feedback = "You're tired; have you heard of the 20-20-20 Rule? 🪟";
+  } else if (averageScore <= 60) {
+    feedback = "You're doing good; have you heard of the 1-Thing Rule? Note one thing you're excited for. 📝";
+  } else if (averageScore <= 70) {
+    feedback = "Steady progress.. Let's play your favorite song. 🎶";
+  } else if (averageScore <= 80) {
+    feedback = "Thriving! Let's spread that energyy✨";
+  } else if (averageScore <= 90) {
+    feedback = "Peak vibes! Have you heard of the Savoring Rule?";
+  } else {
+    feedback = " Take a mental photo of this joy. 🌈";
+  }
+}
 
   // Inside your component
 const chartConfig = {
@@ -190,11 +212,11 @@ const chartConfig = {
 
   return (
     <SafeAreaView style={styles.container}>
+      <AnalyticsHeader/>
       <ScrollView 
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
       >
-        <Text style={styles.header}>Mental Health Analytics</Text>
 
         {/* 1. INSIGHT CARD */}
         <View style={styles.card}>
@@ -204,6 +226,7 @@ const chartConfig = {
         </View>
 
         {/* 2. TREND CHART (Last 7 Sessions) */}
+        <View style={styles.card}>
         <Text style={styles.sectionTitle}>Recent Trend</Text>
         {history.length > 1 ? (
           <LineChart
@@ -217,8 +240,10 @@ const chartConfig = {
         ) : (
           <Text style={styles.emptyText}>Need more chats to show trends.</Text>
         )}
+        </View>
 
         {/* 3. EMOTION BREAKDOWN (Pie Chart) */}
+         <View style={styles.card}>
         <Text style={styles.sectionTitle}>Emotion Breakdown</Text>
         {history.length > 0 ? (
           <PieChart
@@ -228,11 +253,12 @@ const chartConfig = {
             chartConfig={chartConfig}
             accessor={"population"}
             backgroundColor={"transparent"}
-            paddingLeft={"15"}
+            paddingLeft={"30"}
             absolute
           />
         ) : null}
-
+          </View>
+           <View style={styles.card}>
         {/* 4. DAYWISE HISTORY (Scrollable List) */}
         <Text style={styles.sectionTitle}>Session History</Text>
         {history.map((record) => (
@@ -249,12 +275,12 @@ const chartConfig = {
               <Text style={styles.historyLabel}>{record.label}</Text>
               <Text style={styles.historySummary} numberOfLines={1}>{record.summary}</Text>
             </View>
-            <View style={[styles.scoreBadge, { backgroundColor: record.score > 50 ? '#55EFC4' : '#FF7675' }]}>
+            <View style={[styles.scoreBadge, { backgroundColor: record.score > 50 ? theme.colors.primary : theme.colors.error }]}>
               <Text style={styles.scoreText}>{record.score}</Text>
             </View>
           </View>
         ))}
-
+        </View>
         <View style={{ height: 50 }} />
       </ScrollView>
     </SafeAreaView>
@@ -267,7 +293,7 @@ const makeStyles = (theme: any) => StyleSheet.create({
   // 1. LAYOUT
   container: { 
     flex: 1, 
-    backgroundColor: theme.colors.background 
+    backgroundColor: theme.colors.tertiaryContainer 
   },
   scrollContent: { 
     padding: 20,
@@ -275,9 +301,10 @@ const makeStyles = (theme: any) => StyleSheet.create({
   },
   header: { 
     fontSize: 24, 
-    marginBottom: 20, 
-    color: theme.colors.onBackground,
-    fontFamily: 'SpaceMB', // Bold Title
+    marginTop: 30,
+    marginBottom : 20, 
+    color: theme.colors.primary,
+    fontFamily: 'Freak', // Bold Title
   },
   
   // 2. MAIN SCORE CARD
@@ -294,16 +321,17 @@ const makeStyles = (theme: any) => StyleSheet.create({
     elevation: 2,
   },
   cardTitle: { 
-    color: theme.colors.secondary, // Muted Purple
-    fontSize: 14, 
+    color: theme.colors.primary, // Muted Purple
+    fontSize: 18, 
     marginBottom: 5,
-    fontFamily: 'SpaceMB',
+    fontFamily: 'Freak',
     letterSpacing: 1,
   },
   bigScore: { 
-    fontSize: 48, 
+    fontSize: 50, 
     color: theme.colors.primary, 
     fontFamily: 'SpaceMB',
+    // borderWidth : 1
   },
   feedbackText: { 
     textAlign: 'center', 
@@ -320,7 +348,7 @@ const makeStyles = (theme: any) => StyleSheet.create({
     marginTop: 10, 
     marginBottom: 15, 
     color: theme.colors.onBackground,
-    fontFamily: 'SpaceMB',
+    fontFamily: 'Freak',
   },
   chart: { 
     borderRadius: 16, 
@@ -333,7 +361,7 @@ const makeStyles = (theme: any) => StyleSheet.create({
     textAlign: 'center', 
     color: theme.colors.outline, 
     marginVertical: 20,
-    fontFamily: 'SpaceMR',
+    fontFamily: 'Code',
   },
 
   // 4. HISTORY LIST ITEMS
