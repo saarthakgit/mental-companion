@@ -32,15 +32,20 @@ Unlike generic chatbots, KITTI remembers your context, tracks your "Vibe," and o
 
 ---
 
+## 📱 App Demo
+
+<div align="center">
+  <img src="./src/assets/screengif.gif" alt="App Demo" width="300" />
+</div>
+
+---
+
 ## 📸 Screenshots
 
-
-| <img src=".src/assets/screengif.gif" alt="Home Screen" width="200"> | <img src=".src/assets/ss2.png" alt="Chat Screen" width="200"> | <img src=".src/assets/ss3.png" alt="Analysis Screen" width="200"> |
-| <img src=".src/assets/ss1.png" alt="Home Screen" width="200"> | <img src=".src/assets/ss2.png" alt="Chat Screen" width="200"> | <img src=".src/assets/ss3.png" alt="Analysis Screen" width="200"> |
-| <img src=".src/assets/ss1.png" alt="Home Screen" width="200"> | <img src=".src/assets/ss2.png" alt="Chat Screen" width="200"> | <img src=".src/assets/ss4.png" alt="Analysis Screen" width="200"> |
-| <img src=".src/assets/ss1.png" alt="Home Screen" width="200"> | <img src=".src/assets/ss2.png" alt="Chat Screen" width="200"> | <img src=".src/assets/ss5.png" alt="Analysis Screen" width="200"> |
-| <img src=".src/assets/ss1.png" alt="Home Screen" width="200"> | <img src=".src/assets/ss2.png" alt="Chat Screen" width="200"> | <img src=".src/assets/ss6.png" alt="Analysis Screen" width="200"> |
-
+| **Home & Pet** | **Chat Interface** | **Mood Analysis** |
+|:---:|:---:|:---:|
+| <img src="./src/assets/ss1.png" width="250"> | <img src="./src/assets/ss2.png" width="250"> | <img src="./src/assets/ss3.png" width="250"> |
+| <img src="./src/assets/ss4.png" width="250"> | <img src="./src/assets/ss5.png" width="250"> | <img src="./src/assets/ss6.png" width="250"> |
 ---
 
 ## 🛠️ Tech Stack
